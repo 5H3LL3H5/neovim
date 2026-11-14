@@ -1,76 +1,69 @@
-#ifndef NVIM_MESSAGE_H
-#define NVIM_MESSAGE_H
+#pragma once
 
-#include <stdarg.h>
+#include <errno.h>
 #include <stdbool.h>
-#include <stddef.h>
+#include <stddef.h>  // IWYU pragma: keep
 
-#include "nvim/api/private/defs.h"
+#include "nvim/ex_cmds_defs.h"  // IWYU pragma: keep
 #include "nvim/grid_defs.h"
-#include "nvim/lib/kvec.h"
-#include "nvim/macros.h"
-#include "nvim/types.h"
+#include "nvim/keycodes_defs.h"  // IWYU pragma: keep
+#include "nvim/macros_defs.h"
+#include "nvim/message_defs.h"  // IWYU pragma: keep
+#include "nvim/option_defs.h"  // IWYU pragma: keep
 
-/*
- * Types of dialogs passed to do_dialog().
- */
-#define VIM_GENERIC     0
-#define VIM_ERROR       1
-#define VIM_WARNING     2
-#define VIM_INFO        3
-#define VIM_QUESTION    4
-#define VIM_LAST_TYPE   4       // sentinel value
+/// Types of dialogs passed to do_dialog().
+enum {
+  VIM_GENERIC   = 0,
+  VIM_ERROR     = 1,
+  VIM_WARNING   = 2,
+  VIM_INFO      = 3,
+  VIM_QUESTION  = 4,
+  VIM_LAST_TYPE = 4,  ///< sentinel value
+};
 
-/*
- * Return values for functions like vim_dialogyesno()
- */
-#define VIM_YES         2
-#define VIM_NO          3
-#define VIM_CANCEL      4
-#define VIM_ALL         5
-#define VIM_DISCARDALL  6
+/// Return values for functions like vim_dialogyesno()
+enum {
+  VIM_YES        = 2,
+  VIM_NO         = 3,
+  VIM_CANCEL     = 4,
+  VIM_ALL        = 5,
+  VIM_DISCARDALL = 6,
+};
 
-typedef struct {
-  String text;
-  int attr;
-} HlMessageChunk;
+extern MessageHistoryEntry *msg_hist_last;
 
-typedef kvec_t(HlMessageChunk) HlMessage;
+EXTERN bool msg_ext_need_clear INIT( = false);
+/// Set to true to force grouping a set of message chunks into a single `cmdline_show` event.
+EXTERN bool msg_ext_skip_flush INIT( = false);
+/// Set to true when previous message should be overwritten.
+EXTERN bool msg_ext_overwrite INIT( = false);
+/// Set to true to avoid setting "verbose" kind for "last set" messages.
+EXTERN bool msg_ext_skip_verbose INIT( = false);
+/// Set to false for non-internal messages to determine UI callback |api-fast| context.
+EXTERN bool msg_ext_fast INIT( = true);
 
-/// Message history for `:messages`
-typedef struct msg_hist {
-  struct msg_hist *next;  ///< Next message.
-  char_u *msg;            ///< Message text.
-  const char *kind;     ///< Message kind (for msg_ext)
-  int attr;               ///< Message highlighting.
-  bool multiline;         ///< Multiline message.
-} MessageHistoryEntry;
+/// allocated grid for messages. Used unless ext_messages is active.
+/// See also the description at msg_scroll_flush()
+EXTERN ScreenGrid msg_grid INIT( = SCREEN_GRID_INIT);
+EXTERN int msg_grid_pos INIT( = 0);
 
-/// First message
-extern MessageHistoryEntry *first_msg_hist;
-/// Last message
-extern MessageHistoryEntry *last_msg_hist;
+/// "adjusted" message grid. This grid accepts positions relative to
+/// default_grid. Internally it will be translated to a position on msg_grid
+/// relative to the start of the message area, or directly mapped to default_grid
+/// for legacy (display-=msgsep) message scroll behavior.
+/// TODO(bfredl): refactor "internal" message logic, msg_row etc
+/// to use the correct positions already.
+EXTERN GridView msg_grid_adj INIT( = { 0 });
 
-EXTERN bool msg_ext_need_clear INIT(= false);
+/// value of msg_scrolled at latest msg_scroll_flush.
+EXTERN int msg_scrolled_at_flush INIT( = 0);
 
-// allocated grid for messages. Used when display+=msgsep is set, or
-// ext_multigrid is active. See also the description at msg_scroll_flush()
-EXTERN ScreenGrid msg_grid INIT(= SCREEN_GRID_INIT);
-EXTERN int msg_grid_pos INIT(= 0);
+EXTERN int msg_grid_scroll_discount INIT( = 0);
 
-// "adjusted" message grid. This grid accepts positions relative to
-// default_grid. Internally it will be translated to a position on msg_grid
-// relative to the start of the message area, or directly mapped to default_grid
-// for legacy (display-=msgsep) message scroll behavior.
-// // TODO(bfredl): refactor "internal" message logic, msg_row etc
-// to use the correct positions already.
-EXTERN ScreenGrid msg_grid_adj INIT(= SCREEN_GRID_INIT);
+EXTERN int msg_listdo_overwrite INIT( = 0);
 
-// value of msg_scrolled at latest msg_scroll_flush.
-EXTERN int msg_scrolled_at_flush INIT(= 0);
+#include "message.h.generated.h"
 
-
-#ifdef INCLUDE_GENERATED_DECLARATIONS
-# include "message.h.generated.h"
-#endif
-#endif  // NVIM_MESSAGE_H
+// Prefer using semsg(), because perror() may send the output to the wrong
+// destination and mess up the screen.
+#define PERROR(msg) (void)semsg("%s: %s", (msg), strerror(errno))

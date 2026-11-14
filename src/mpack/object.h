@@ -1,8 +1,8 @@
 #ifndef MPACK_OBJECT_H
 #define MPACK_OBJECT_H
 
-#include "mpack_core.h"
 #include "conv.h"
+#include "mpack_core.h"
 
 #ifndef MPACK_MAX_OBJECT_DEPTH
 # define MPACK_MAX_OBJECT_DEPTH 32
@@ -22,7 +22,7 @@ enum {
 };
 
 /* Storing integer in pointers in undefined behavior according to the C
- * standard. Define a union type to accomodate arbitrary user data associated
+ * standard. Define a union type to accommodate arbitrary user data associated
  * with nodes(and with requests in rpc.h). */
 typedef union {
   void *p;

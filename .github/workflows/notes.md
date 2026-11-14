@@ -2,39 +2,81 @@
 ${NVIM_VERSION}
 ```
 
+## Release notes
+
+- [Changelog](https://github.com/neovim/neovim/commit/${NVIM_COMMIT}) (fixes + features)
+- [News](./runtime/doc/news.txt) (`:help news` in Nvim)
+
 ## Install
 
 ### Windows
 
-1. Extract **nvim-win64.zip**
-2. Run `nvim-qt.exe`
+#### Zip
 
-### macOS
+1. Download **nvim-win64.zip** (or **nvim-win-arm64.zip** for ARM)
+2. Extract the zip
+3. Run `nvim.exe` in your terminal
 
-1. Download **nvim-macos.tar.gz**
-2. Extract: `tar xzvf nvim-macos.tar.gz`
-3. Run `./nvim-osx64/bin/nvim`
+#### MSI
 
-### Linux (x64)
+1. Download **nvim-win64.msi** (or **nvim-win-arm64.msi** for ARM)
+2. Run the MSI
+3. Run `nvim.exe` in your terminal
 
-1. Download **nvim.appimage**
-2. Run `chmod u+x nvim.appimage && ./nvim.appimage`
+Note: On Windows "Server" you may need to [install `vcruntime*.dll`](https://neovim.io/doc/install/#windows).
+
+### macOS (x86_64)
+
+1. Download **nvim-macos-x86_64.tar.gz**
+2. Run `xattr -c ./nvim-macos-x86_64.tar.gz` (to avoid "unknown developer" warning)
+3. Extract: `tar xzvf nvim-macos-x86_64.tar.gz`
+4. Run `./nvim-macos-x86_64/bin/nvim`
+
+### macOS (arm64)
+
+1. Download **nvim-macos-arm64.tar.gz**
+2. Run `xattr -c ./nvim-macos-arm64.tar.gz` (to avoid "unknown developer" warning)
+3. Extract: `tar xzvf nvim-macos-arm64.tar.gz`
+4. Run `./nvim-macos-arm64/bin/nvim`
+
+### Linux (x86_64)
+
+If your system does not have the required glibc version, try the (unsupported) [builds for older glibc](https://github.com/neovim/neovim-releases).
+
+#### AppImage
+
+1. Download **nvim-linux-x86_64.appimage**
+2. Run `chmod u+x nvim-linux-x86_64.appimage && ./nvim-linux-x86_64.appimage`
    - If your system does not have FUSE you can [extract the appimage](https://github.com/AppImage/AppImageKit/wiki/FUSE#type-2-appimage):
-     ```
-     ./nvim.appimage --appimage-extract
+     ```bash
+     ./nvim-linux-x86_64.appimage --appimage-extract
      ./squashfs-root/usr/bin/nvim
      ```
 
+#### Tarball
+
+1. Download **nvim-linux-x86_64.tar.gz**
+2. Extract: `tar xzvf nvim-linux-x86_64.tar.gz`
+3. Run `./nvim-linux-x86_64/bin/nvim`
+
+### Linux (arm64)
+
+#### AppImage
+
+1. Download **nvim-linux-arm64.appimage**
+2. Run `chmod u+x nvim-linux-arm64.appimage && ./nvim-linux-arm64.appimage`
+   - If your system does not have FUSE you can [extract the appimage](https://github.com/AppImage/AppImageKit/wiki/FUSE#type-2-appimage):
+     ```bash
+     ./nvim-linux-arm64.appimage --appimage-extract
+     ./squashfs-root/usr/bin/nvim
+     ```
+
+#### Tarball
+
+1. Download **nvim-linux-arm64.tar.gz**
+2. Extract: `tar xzvf nvim-linux-arm64.tar.gz`
+3. Run `./nvim-linux-arm64/bin/nvim`
+
 ### Other
 
-- Install by [package manager](https://github.com/neovim/neovim/wiki/Installing-Neovim)
-
-## SHA256 Checksums
-
-```
-${SHA_LINUX_64}
-${SHA_APP_IMAGE}
-${SHA_APP_IMAGE_ZSYNC}
-${SHA_MACOS}
-${SHA_WIN_64}
-```
+- Install by [package manager](https://github.com/neovim/neovim/blob/master/INSTALL.md#install-from-package)

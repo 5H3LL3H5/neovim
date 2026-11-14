@@ -389,8 +389,8 @@ msgstr " Comhlánú saincheaptha (^U^N^P)"
 msgid " Omni completion (^O^N^P)"
 msgstr " Comhlánú Omni (^O^N^P)"
 
-msgid " Spelling suggestion (s^N^P)"
-msgstr " Moladh litrithe (s^N^P)"
+msgid " Spelling suggestion (^S^N^P)"
+msgstr " Moladh litrithe (^S^N^P)"
 
 msgid " Keyword Local completion (^N^P)"
 msgstr " Comhlánú logánta lorgfhocal (^N^P)"
@@ -972,8 +972,8 @@ msgstr ""
 "E146: Ní cheadaítear litreacha mar theormharcóirí ar shloinn ionadaíochta"
 
 #, c-format
-msgid "replace with %s (y/n/a/q/l/^E/^Y)?"
-msgstr "cuir %s ina ionad (y/n/a/q/l/^E/^Y)?"
+msgid "replace with %s? (y)es/(n)o/(a)ll/(q)uit/(l)ast/scroll up(^E)/down(^Y)"
+msgstr "cuir %s? ina ionad (y)es/(n)o/(a)ll/(q)uit/(l)ast/scroll up(^E)/down(^Y)"
 
 msgid "(Interrupted) "
 msgstr "(Idirbhriste) "
@@ -1028,16 +1028,16 @@ msgid "E478: Don't panic!"
 msgstr "E478: Ná téigh i scaoll!"
 
 #, c-format
-msgid "E661: Sorry, no '%s' help for %s"
-msgstr "E661: Tá brón orm, ní aon chabhair '%s' do %s"
+msgid "E661: No '%s' help for %s"
+msgstr "E661: Ní aon chabhair '%s' do %s"
 
 #, c-format
-msgid "E149: Sorry, no help for %s"
-msgstr "E149: Tá brón orm, níl aon chabhair do %s"
+msgid "E149: No help for %s"
+msgstr "E149: Níl aon chabhair do %s"
 
 #, c-format
-msgid "Sorry, help file \"%s\" not found"
-msgstr "Tá brón orm, comhad cabhrach \"%s\" gan aimsiú"
+msgid "Help file \"%s\" not found"
+msgstr "Comhad cabhrach \"%s\" gan aimsiú"
 
 #, c-format
 msgid "E151: No match: %s"
@@ -2385,99 +2385,6 @@ msgstr "Méid:"
 msgid "E256: Hangul automata ERROR"
 msgstr "E256: EARRÁID leis na huathoibreáin Hangul"
 
-msgid "E550: Missing colon"
-msgstr "E550: Idirstad ar iarraidh"
-
-msgid "E551: Illegal component"
-msgstr "E551: Comhpháirt neamhcheadaithe"
-
-msgid "E552: digit expected"
-msgstr "E552: ag súil le digit"
-
-#, c-format
-msgid "Page %d"
-msgstr "Leathanach %d"
-
-msgid "No text to be printed"
-msgstr "Níl aon téacs le priontáil"
-
-#, c-format
-msgid "Printing page %d (%d%%)"
-msgstr "Leathanach %d (%d%%) á phriontáil"
-
-#, c-format
-msgid " Copy %d of %d"
-msgstr " Cóip %d de %d"
-
-#, c-format
-msgid "Printed: %s"
-msgstr "Priontáilte: %s"
-
-msgid "Printing aborted"
-msgstr "Priontáil tobscortha"
-
-msgid "E455: Error writing to PostScript output file"
-msgstr "E455: Earráid le linn scríobh chuig aschomhad PostScript"
-
-#, c-format
-msgid "E624: Can't open file \"%s\""
-msgstr "E624: Ní féidir an comhad \"%s\" a oscailt"
-
-#, c-format
-msgid "E457: Can't read PostScript resource file \"%s\""
-msgstr "E457: Ní féidir comhad acmhainne PostScript \"%s\" a léamh"
-
-#, c-format
-msgid "E618: file \"%s\" is not a PostScript resource file"
-msgstr "E618: Níl comhad \"%s\" ina chomhad acmhainne PostScript"
-
-#, c-format
-msgid "E619: file \"%s\" is not a supported PostScript resource file"
-msgstr "E619: Tá \"%s\" ina chomhad acmhainne PostScript gan tacú"
-
-#, c-format
-msgid "E621: \"%s\" resource file has wrong version"
-msgstr "E621: Tá an leagan mícheart ar an gcomhad acmhainne \"%s\""
-
-msgid "E673: Incompatible multi-byte encoding and character set."
-msgstr "E673: Ionchódú agus tacar carachtar ilbhirt neamh-chomhoiriúnach."
-
-msgid "E674: printmbcharset cannot be empty with multi-byte encoding."
-msgstr ""
-"E674: ní cheadaítear printmbcharset a bheith folamh le hionchódú ilbhirt."
-
-msgid "E675: No default font specified for multi-byte printing."
-msgstr "E675: Níor réamhshocraíodh cló le haghaidh priontála ilbhirt."
-
-msgid "E324: Can't open PostScript output file"
-msgstr "E324: Ní féidir aschomhad PostScript a oscailt"
-
-#, c-format
-msgid "E456: Can't open file \"%s\""
-msgstr "E456: Ní féidir an comhad \"%s\" a oscailt"
-
-msgid "E456: Can't find PostScript resource file \"prolog.ps\""
-msgstr "E456: Comhad acmhainne PostScript \"prolog.ps\" gan aimsiú"
-
-msgid "E456: Can't find PostScript resource file \"cidfont.ps\""
-msgstr "E456: Comhad acmhainne PostScript \"cidfont.ps\" gan aimsiú"
-
-#, c-format
-msgid "E456: Can't find PostScript resource file \"%s.ps\""
-msgstr "E456: Comhad acmhainne PostScript \"%s.ps\" gan aimsiú"
-
-#, c-format
-msgid "E620: Unable to convert to print encoding \"%s\""
-msgstr "E620: Ní féidir an t-ionchódú priontála \"%s\" a thiontú"
-
-msgid "Sending to printer..."
-msgstr "Á sheoladh chuig an phrintéir..."
-
-msgid "E365: Failed to print PostScript file"
-msgstr "E365: Theip ar phriontáil comhaid PostScript"
-
-msgid "Print job sent."
-msgstr "Seoladh jab priontála."
 
 msgid "Add a new database"
 msgstr "Bunachar sonraí nua"
@@ -3760,12 +3667,8 @@ msgstr "E773: Ciogal i naisc shiombalacha le haghaidh \"%s\""
 msgid "E325: ATTENTION"
 msgstr "E325: AIRE"
 
-msgid ""
-"\n"
-"Found a swap file by the name \""
-msgstr ""
-"\n"
-"Fuarthas comhad babhtála darbh ainm \""
+msgid "Found a swap file by the name \""
+msgstr "Fuarthas comhad babhtála darbh ainm \""
 
 msgid "While opening file \""
 msgstr "Agus an comhad seo á oscailt: \""
@@ -3789,8 +3692,8 @@ msgstr ""
 msgid "(2) An edit session for this file crashed.\n"
 msgstr "(2) Thuairteáil seisiún eagarthóireachta.\n"
 
-msgid "    If this is the case, use \":recover\" or \"vim -r "
-msgstr "    Más amhlaidh, bain úsáid as \":recover\" nó \"vim -r "
+msgid "    If this is the case, use \":recover\" or \"nvim -r "
+msgstr "    Más amhlaidh, bain úsáid as \":recover\" nó \"nvim -r "
 
 msgid ""
 "\"\n"
@@ -4573,12 +4476,8 @@ msgstr ""
 "\n"
 "Ní féidir an bhlaosc sh a rith\n"
 
-msgid ""
-"\n"
-"shell returned "
-msgstr ""
-"\n"
-"d'aisfhill an bhlaosc "
+msgid "shell returned "
+msgstr "d'aisfhill an bhlaosc "
 
 msgid ""
 "\n"
@@ -5086,12 +4985,12 @@ msgstr "E797: Scrios uathordú SpellFileMissing an maolán"
 msgid "Warning: region %s not supported"
 msgstr "Rabhadh: réigiún %s gan tacaíocht"
 
-msgid "Sorry, no suggestions"
-msgstr "Tá brón orm, níl aon mholadh ann"
+msgid "No suggestions"
+msgstr "Níl aon mholadh ann"
 
 #, c-format
-msgid "Sorry, only %ld suggestions"
-msgstr "Tá brón orm, níl ach %ld moladh ann"
+msgid "Only %ld suggestions"
+msgstr "Níl ach %ld moladh ann"
 
 #. for when 'cmdheight' > 1
 #. avoid more prompt
@@ -5668,8 +5567,8 @@ msgstr "E424: An iomarca tréithe aibhsithe in úsáid"
 msgid "E669: Unprintable character in group name"
 msgstr "E669: Carachtar neamhghrafach in ainm grúpa"
 
-msgid "W18: Invalid character in group name"
-msgstr "W18: Carachtar neamhbhailí in ainm grúpa"
+msgid "E5248: Invalid character in group name"
+msgstr "E5248: Carachtar neamhbhailí in ainm grúpa"
 
 msgid "E849: Too many highlight and syntax groups"
 msgstr "E849: An iomarca grúpaí aibhsithe agus comhréire"
@@ -6468,10 +6367,6 @@ msgstr "E471: Tá gá le hargóint"
 msgid "E10: \\ should be followed by /, ? or &"
 msgstr "E10: Ba chóir /, ? nó & a chur i ndiaidh \\"
 
-msgid "E11: Invalid in command-line window; <CR> executes, CTRL-C quits"
-msgstr ""
-"E11: Neamhbhailí i bhfuinneog líne na n-orduithe; <CR>=rith, CTRL-C=scoir"
-
 msgid "E12: Command not allowed from exrc/vimrc in current dir or tag search"
 msgstr ""
 "E12: Ní cheadaítear ordú ó exrc/vimrc sa chomhadlann reatha ná ó chuardach "
@@ -7103,13 +6998,14 @@ msgstr ""
 "Níorbh fhéidir an chonair a shocrú: ní liosta é sys.path\n"
 "Ba chóir duit vim.VIM_SPECIAL_PATH a cheangal le deireadh sys.path"
 
-#~ msgid "+-%s%3ld line: "
-#~ msgid_plural "+-%s%3ld lines: "
-#~ msgstr[0] "+-%s%3ld líne: "
-#~ msgstr[1] "+-%s%3ld líne: "
-#~ msgstr[2] "+-%s%3ld líne: "
-#~ msgstr[3] "+-%s%3ld líne: "
-#~ msgstr[4] "+-%s%3ld líne: "
+#, c-format
+msgid "+-%s%3ld line: "
+msgid_plural "+-%s%3ld lines: "
+msgstr[0] "+-%s%3ld líne: "
+msgstr[1] "+-%s%3ld líne: "
+msgstr[2] "+-%s%3ld líne: "
+msgstr[3] "+-%s%3ld líne: "
+msgstr[4] "+-%s%3ld líne: "
 
 #~ msgid "+--%3ld line folded "
 #~ msgid_plural "+--%3ld lines folded "

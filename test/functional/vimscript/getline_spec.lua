@@ -1,14 +1,16 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local call = helpers.call
-local clear = helpers.clear
-local eq = helpers.eq
-local expect = helpers.expect
+local describe, it, before_each = t.describe, t.it, t.before_each
+local call = n.call
+local clear = n.clear
+local eq = t.eq
+local expect = n.expect
 
 describe('getline()', function()
   before_each(function()
     clear()
-    call('setline', 1, {'a', 'b', 'c'})
+    call('setline', 1, { 'a', 'b', 'c' })
     expect([[
       a
       b
@@ -33,7 +35,7 @@ describe('getline()', function()
   end)
 
   it('returns value of valid range', function()
-    eq({'a', 'b'}, call('getline', 1, 2))
-    eq({'a', 'b', 'c'}, call('getline', 1, 4))
+    eq({ 'a', 'b' }, call('getline', 1, 2))
+    eq({ 'a', 'b', 'c' }, call('getline', 1, 4))
   end)
 end)

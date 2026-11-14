@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <string.h>
 
 #include "mpack_core.h"
@@ -12,8 +9,6 @@
 # define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 #endif
 
-static int mpack_rtoken(const char **buf, size_t *buflen,
-    mpack_token_t *tok);
 static int mpack_rpending(const char **b, size_t *nl, mpack_tokbuf_t *tb);
 static int mpack_rvalue(mpack_token_type_t t, mpack_uint32_t l,
     const char **b, size_t *bl, mpack_token_t *tok);
@@ -52,7 +47,10 @@ MPACK_API int mpack_read(mpack_tokbuf_t *tokbuf, const char **buf,
   int status;
   size_t initial_ppos, ptrlen, advanced;
   const char *ptr, *ptr_save;
-  assert(*buf && *buflen);
+  assert(*buf);
+  if (*buflen == 0) {
+    return MPACK_EOF;
+  }
 
   if (tokbuf->passthrough) {
     /* pass data from str/bin/ext directly as a MPACK_TOKEN_CHUNK, adjusting
@@ -170,9 +168,11 @@ MPACK_API int mpack_write(mpack_tokbuf_t *tokbuf, char **buf, size_t *buflen,
   return MPACK_OK;
 }
 
-static int mpack_rtoken(const char **buf, size_t *buflen,
-    mpack_token_t *tok)
+int mpack_rtoken(const char **buf, size_t *buflen, mpack_token_t *tok)
 {
+  if (*buflen == 0) {
+    return MPACK_EOF;
+  }
   unsigned char t = ADVANCE(buf, buflen);
   if (t < 0x80) {
     /* positive fixint */
@@ -403,16 +403,17 @@ static int mpack_wnint(char **buf, size_t *buflen, mpack_value_t val)
   mpack_uint32_t hi = val.hi;
   mpack_uint32_t lo = val.lo;
 
-  if (lo < 0x80000000) {
-    /* int 64 */
+  if ((hi && hi != 0xffffffff) || lo < 0x80000000) {
+    /* int 64. Negative values that fit in 32 bits have all "hi" bits set (or
+     * none, for tokens produced by mpack_read which are not sign-extended). */
     return mpack_w1(buf, buflen, 0xd3) ||
            mpack_w4(buf, buflen, hi)   ||
            mpack_w4(buf, buflen, lo);
-  } else if (lo < 0xffff7fff) {
+  } else if (lo < 0xffff8000) {
     /* int 32 */
     return mpack_w1(buf, buflen, 0xd2) ||
            mpack_w4(buf, buflen, lo);
-  } else if (lo < 0xffffff7f) {
+  } else if (lo < 0xffffff80) {
     /* int 16 */
     return mpack_w1(buf, buflen, 0xd1) ||
            mpack_w2(buf, buflen, lo);

@@ -1,69 +1,19 @@
-#ifndef NVIM_CHANNEL_H
-#define NVIM_CHANNEL_H
+#pragma once
 
-#include "nvim/eval/typval.h"
-#include "nvim/event/libuv_process.h"
-#include "nvim/event/process.h"
-#include "nvim/event/socket.h"
-#include "nvim/main.h"
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+
+#include "nvim/autocmd_defs.h"
+#include "nvim/channel_defs.h"  // IWYU pragma: keep
+#include "nvim/eval/typval_defs.h"
+#include "nvim/event/defs.h"
+#include "nvim/event/libuv_proc.h"
+#include "nvim/macros_defs.h"
+#include "nvim/map_defs.h"
 #include "nvim/msgpack_rpc/channel_defs.h"
-#include "nvim/os/pty_process.h"
-
-#define CHAN_STDIO 1
-#define CHAN_STDERR 2
-
-typedef enum {
-  kChannelStreamProc,
-  kChannelStreamSocket,
-  kChannelStreamStdio,
-  kChannelStreamStderr,
-  kChannelStreamInternal,
-} ChannelStreamType;
-
-typedef enum {
-  kChannelPartStdin,
-  kChannelPartStdout,
-  kChannelPartStderr,
-  kChannelPartRpc,
-  kChannelPartAll,
-} ChannelPart;
-
-typedef enum {
-  kChannelStdinPipe,
-  kChannelStdinNull,
-} ChannelStdinMode;
-
-typedef struct {
-  Stream in;
-  Stream out;
-} StdioPair;
-
-typedef struct {
-  bool closed;
-} StderrState;
-
-typedef struct {
-  LuaRef cb;
-} InternalState;
-
-typedef struct {
-  Callback cb;
-  dict_T *self;
-  garray_T buffer;
-  bool eof;
-  bool buffered;
-  const char *type;
-} CallbackReader;
-
-#define CALLBACK_READER_INIT ((CallbackReader){ .cb = CALLBACK_NONE, \
-                                                .self = NULL, \
-                                                .buffer = GA_EMPTY_INIT_VALUE, \
-                                                .buffered = false, \
-                                                .type = NULL })
-static inline bool callback_reader_set(CallbackReader reader)
-{
-  return reader.cb.type != kCallbackNone || reader.self;
-}
+#include "nvim/os/pty_proc.h"
+#include "nvim/types_defs.h"
 
 struct Channel {
   uint64_t id;
@@ -72,38 +22,51 @@ struct Channel {
 
   ChannelStreamType streamtype;
   union {
-    Process proc;
-    LibuvProcess uv;
-    PtyProcess pty;
-    Stream socket;
+    Proc proc;
+    LibuvProc uv;
+    PtyProc pty;
+    RStream socket;
     StdioPair stdio;
     StderrState err;
     InternalState internal;
   } stream;
 
   bool is_rpc;
+  bool detach;  ///< Prevents self-exit on channel-close. Nvim self-exits when the last open
+                ///< detach=false RPC channel is closed. The stdio channel defaults to detach=false.
+  char *addr;  ///< Address (hint) the peer uses to reach this server (e.g. a tunnel), or NULL.
+  /// Trust the peer: accept its incoming RPC API calls. Should be false for an untrusted peer.
+  /// If false, only responses (and UI events) are accepted.
+  bool trust;
   RpcState rpc;
   Terminal *term;
 
   CallbackReader on_data;
   CallbackReader on_stderr;
   Callback on_exit;
-  int exit_status;
+  int exit_status;  ///< Process exit-code (if the channel wraps a process).
 
   bool callback_busy;
   bool callback_scheduled;
+  bool did_close_event;
 };
 
-EXTERN PMap(uint64_t) channels INIT(= MAP_INIT);
+#include "channel.h.generated.h"
+#include "channel.h.inline.generated.h"
 
-#ifdef INCLUDE_GENERATED_DECLARATIONS
-# include "channel.h.generated.h"
-#endif
+static inline bool callback_reader_set(CallbackReader reader)
+{
+  return reader.cb.type != kCallbackNone || reader.self;
+}
+
+EXTERN PMap(uint64_t) channels INIT( = MAP_INIT);
+
+EXTERN Callback on_print INIT( = CALLBACK_INIT);
 
 /// @returns Channel with the id or NULL if not found
 static inline Channel *find_channel(uint64_t id)
 {
-  return pmap_get(uint64_t)(&channels, id);
+  return (Channel *)pmap_get(uint64_t)(&channels, id);
 }
 
 static inline Stream *channel_instream(Channel *chan)
@@ -114,7 +77,7 @@ static inline Stream *channel_instream(Channel *chan)
     return &chan->stream.proc.in;
 
   case kChannelStreamSocket:
-    return &chan->stream.socket;
+    return &chan->stream.socket.s;
 
   case kChannelStreamStdio:
     return &chan->stream.stdio.out;
@@ -126,7 +89,7 @@ static inline Stream *channel_instream(Channel *chan)
   abort();
 }
 
-static inline Stream *channel_outstream(Channel *chan)
+static inline RStream *channel_outstream(Channel *chan)
   FUNC_ATTR_NONNULL_ALL
 {
   switch (chan->streamtype) {
@@ -145,6 +108,3 @@ static inline Stream *channel_outstream(Channel *chan)
   }
   abort();
 }
-
-
-#endif  // NVIM_CHANNEL_H

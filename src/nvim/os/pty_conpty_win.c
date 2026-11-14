@@ -1,11 +1,9 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <uv.h>
 
+#include "nvim/log.h"
 #include "nvim/os/os.h"
 #include "nvim/os/pty_conpty_win.h"
-#include "nvim/vim.h"
+#include "nvim/vim_defs.h"
 
 #ifndef EXTENDED_STARTUPINFO_PRESENT
 # define EXTENDED_STARTUPINFO_PRESENT 0x00080000
@@ -14,9 +12,9 @@
 # define PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE 0x00020016
 #endif
 
-HRESULT (WINAPI *pCreatePseudoConsole)(COORD, HANDLE, HANDLE, DWORD, HPCON *);
-HRESULT (WINAPI *pResizePseudoConsole)(HPCON, COORD);
-void (WINAPI *pClosePseudoConsole)(HPCON);
+HRESULT(WINAPI *pCreatePseudoConsole)(COORD, HANDLE, HANDLE, DWORD, HPCON *);
+HRESULT(WINAPI *pResizePseudoConsole)(HPCON, COORD);
+void(WINAPI *pClosePseudoConsole)(HPCON);
 
 bool os_has_conpty_working(void)
 {
@@ -30,11 +28,21 @@ bool os_has_conpty_working(void)
 
 TriState os_dyn_conpty_init(void)
 {
-  uv_lib_t kernel;
-  if (uv_dlopen("kernel32.dll", &kernel)) {
-    uv_dlclose(&kernel);
-    return kFalse;
+  uv_lib_t conpty_lib;
+
+  if (!uv_dlopen("conpty.dll", &conpty_lib)) {
+    ILOG("Loaded new ConPTY from conpty.dll");
+  } else {
+    // uv_dlopen() allocates an error message even on failure, so close the
+    // handle before reusing conpty_lib for the system ConPTY fallback.
+    uv_dlclose(&conpty_lib);
+    if (uv_dlopen("kernel32.dll", &conpty_lib)) {
+      uv_dlclose(&conpty_lib);
+      return kFalse;
+    }
+    ILOG("Loaded system ConPTY from kernel32.dll");
   }
+
   static struct {
     char *name;
     FARPROC *ptr;
@@ -46,8 +54,8 @@ TriState os_dyn_conpty_init(void)
   };
   for (int i = 0;
        conpty_entry[i].name != NULL && conpty_entry[i].ptr != NULL; i++) {
-    if (uv_dlsym(&kernel, conpty_entry[i].name, (void **)conpty_entry[i].ptr)) {
-      uv_dlclose(&kernel);
+    if (uv_dlsym(&conpty_lib, conpty_entry[i].name, (void **)conpty_entry[i].ptr)) {
+      uv_dlclose(&conpty_lib);
       return kFalse;
     }
   }
@@ -67,7 +75,7 @@ conpty_t *os_conpty_init(char **in_name, char **out_name, uint16_t width, uint16
                      | PIPE_ACCESS_OUTBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE;
 
   sa.nLength = sizeof(sa);
-  snprintf(buf, sizeof(buf), "\\\\.\\pipe\\nvim-term-in-%d-%d",
+  snprintf(buf, sizeof(buf), "\\\\.\\pipe\\nvim-term-in-%lld-%d",
            os_get_pid(), count);
   *in_name = xstrdup(buf);
   if ((in_read = CreateNamedPipeA(*in_name,
@@ -81,7 +89,7 @@ conpty_t *os_conpty_init(char **in_name, char **out_name, uint16_t width, uint16
     emsg = "create input pipe failed";
     goto failed;
   }
-  snprintf(buf, sizeof(buf), "\\\\.\\pipe\\nvim-term-out-%d-%d",
+  snprintf(buf, sizeof(buf), "\\\\.\\pipe\\nvim-term-out-%lld-%d",
            os_get_pid(), count);
   *out_name = xstrdup(buf);
   if ((out_write = CreateNamedPipeA(*out_name,
@@ -145,8 +153,8 @@ finished:
   return conpty_object;
 }
 
-bool os_conpty_spawn(conpty_t *conpty_object, HANDLE *process_handle, wchar_t *name,
-                     wchar_t *cmd_line, wchar_t *cwd, wchar_t *env)
+bool os_conpty_spawn(conpty_t *conpty_object, HANDLE *proc_handle, wchar_t *name, wchar_t *cmd_line,
+                     wchar_t *cwd, wchar_t *env)
 {
   PROCESS_INFORMATION pi = { 0 };
   if (!CreateProcessW(name,
@@ -161,7 +169,7 @@ bool os_conpty_spawn(conpty_t *conpty_object, HANDLE *process_handle, wchar_t *n
                       &pi)) {
     return false;
   }
-  *process_handle = pi.hProcess;
+  *proc_handle = pi.hProcess;
   return true;
 }
 
@@ -171,13 +179,14 @@ void os_conpty_set_size(conpty_t *conpty_object, uint16_t width, uint16_t height
   assert(height <= SHRT_MAX);
   COORD size = { (int16_t)width, (int16_t)height };
   if (pResizePseudoConsole(conpty_object->pty, size) != S_OK) {
-    ELOG("ResizePseudoConsoel failed: error code: %d",
+    ELOG("ResizePseudoConsole failed: error code: %d",
          os_translate_sys_error((int)GetLastError()));
   }
 }
 
-void os_conpty_free(conpty_t *conpty_object)
+void os_conpty_free(void *data)
 {
+  conpty_t *conpty_object = data;
   if (conpty_object != NULL) {
     if (conpty_object->si_ex.lpAttributeList != NULL) {
       DeleteProcThreadAttributeList(conpty_object->si_ex.lpAttributeList);

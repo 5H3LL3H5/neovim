@@ -1,252 +1,529 @@
-local util = require('vim.lsp.util')
 local api = vim.api
+local log = require('vim.lsp.log')
+local tableclear = require('vim._core.table').clear
+local util = require('vim.lsp.util')
+
 local M = {}
 
---- bufnr → true|nil
---- to throttle refreshes to at most one at a time
-local active_refreshes = {}
+local Capability = require('vim.lsp._capability')
 
---- bufnr -> client_id -> lenses
-local lens_cache_by_buf = setmetatable({}, {
-  __index = function(t, b)
-    local key = b > 0 and b or api.nvim_get_current_buf()
-    return rawget(t, key)
+---@class (private) vim.lsp.codelens.RowLenses
+---@field lenses lsp.CodeLens[]
+---@field version? integer `TextDocument` version most recently applied to this row.
+
+---@class (private) vim.lsp.codelens.ClientState
+---@field row_lenses table<integer, vim.lsp.codelens.RowLenses>
+---@field namespace integer
+---@field version? integer `TextDocument` version current state corresponds to.
+
+---@class (private) vim.lsp.codelens.Provider : vim.lsp.Capability
+---@field active table<integer, vim.lsp.codelens.Provider>
+---
+--- Index In the form of client_id -> client_state
+---@field client_state table<integer, vim.lsp.codelens.ClientState?>
+local Provider = {
+  name = 'codelens',
+  method = 'textDocument/codeLens',
+  active = {},
+}
+Provider.__index = Provider
+setmetatable(Provider, Capability)
+Capability.all[Provider.name] = Provider
+
+---@package
+---@param client_id integer
+function Provider:on_attach(client_id)
+  if not self.client_state[client_id] then
+    self.client_state[client_id] = {
+      namespace = api.nvim_create_namespace('nvim.lsp.codelens:' .. client_id),
+      row_lenses = {},
+    }
   end
-})
+  self:request(client_id)
+end
 
-local namespaces = setmetatable({}, {
-  __index = function(t, key)
-    local value = api.nvim_create_namespace('vim_lsp_codelens:' .. key)
-    rawset(t, key, value)
-    return value
-  end;
-})
+---@package
+---@param client_id integer
+function Provider:on_detach(client_id)
+  local state = self.client_state[client_id]
+  if state then
+    self:clear(client_id)
+    self.client_state[client_id] = nil
+  end
+end
 
 ---@private
-M.__namespaces = namespaces
-
+---@param client_id integer
+function Provider:on_close(client_id)
+  self:clear(client_id)
+end
 
 ---@private
-local function execute_lens(lens, bufnr, client_id)
-  local line = lens.range.start.line
-  api.nvim_buf_clear_namespace(bufnr, namespaces[client_id], line, line + 1)
-
-  local client = vim.lsp.get_client_by_id(client_id)
-  assert(client, 'Client is required to execute lens, client_id=' .. client_id)
-  local command = lens.command
-  local fn = client.commands[command.command] or vim.lsp.commands[command.command]
-  if fn then
-    fn(command, { bufnr = bufnr, client_id = client_id })
-    return
-  end
-  -- Need to use the client that returned the lens → must not use buf_request
-  local command_provider = client.server_capabilities.executeCommandProvider
-  local commands = type(command_provider) == 'table' and command_provider.commands or {}
-  if not vim.tbl_contains(commands, command.command) then
-    vim.notify(string.format(
-      "Language server does not support command `%s`. This command may require a client extension.", command.command),
-      vim.log.levels.WARN)
-      return
-  end
-  client.request('workspace/executeCommand', command, function(...)
-    local result = vim.lsp.handlers['workspace/executeCommand'](...)
-    M.refresh()
-    return result
-  end, bufnr)
+---@param client_id integer
+function Provider:on_change(client_id)
+  self:request(client_id)
 end
 
-
---- Return all lenses for the given buffer
----
----@param bufnr number  Buffer number. 0 can be used for the current buffer.
----@return table (`CodeLens[]`)
-function M.get(bufnr)
-  local lenses_by_client = lens_cache_by_buf[bufnr or 0]
-  if not lenses_by_client then return {} end
-  local lenses = {}
-  for _, client_lenses in pairs(lenses_by_client) do
-    vim.list_extend(lenses, client_lenses)
-  end
-  return lenses
-end
-
-
---- Run the code lens in the current line
----
-function M.run()
-  local line = api.nvim_win_get_cursor(0)[1]
-  local bufnr = api.nvim_get_current_buf()
-  local options = {}
-  local lenses_by_client = lens_cache_by_buf[bufnr] or {}
-  for client, lenses in pairs(lenses_by_client) do
-    for _, lens in pairs(lenses) do
-      if lens.range.start.line == (line - 1) then
-        table.insert(options, {client=client, lens=lens})
-      end
-    end
-  end
-  if #options == 0 then
-    vim.notify('No executable codelens found at current line')
-  elseif #options == 1 then
-    local option = options[1]
-    execute_lens(option.lens, bufnr, option.client)
-  else
-    vim.ui.select(options, {
-      prompt = 'Code lenses:',
-      format_item = function(option)
-        return option.lens.command.title
-      end,
-    }, function(option)
-      if option then
-        execute_lens(option.lens, bufnr, option.client)
-      end
-    end)
-  end
-end
-
-
---- Display the lenses using virtual text
----
----@param lenses table of lenses to display (`CodeLens[] | null`)
----@param bufnr number
----@param client_id number
-function M.display(lenses, bufnr, client_id)
-  if not lenses or not next(lenses) then
-    return
-  end
-  local lenses_by_lnum = {}
-  for _, lens in pairs(lenses) do
-    local line_lenses = lenses_by_lnum[lens.range.start.line]
-    if not line_lenses then
-      line_lenses = {}
-      lenses_by_lnum[lens.range.start.line] = line_lenses
-    end
-    table.insert(line_lenses, lens)
-  end
-  local ns = namespaces[client_id]
-  local num_lines = api.nvim_buf_line_count(bufnr)
-  for i = 0, num_lines do
-    local line_lenses = lenses_by_lnum[i] or {}
-    api.nvim_buf_clear_namespace(bufnr, ns, i, i + 1)
-    local chunks = {}
-    local num_line_lenses = #line_lenses
-    for j, lens in ipairs(line_lenses) do
-      local text = lens.command and lens.command.title or 'Unresolved lens ...'
-      table.insert(chunks, {text, 'LspCodeLens' })
-      if j < num_line_lenses then
-        table.insert(chunks, {' | ', 'LspCodeLensSeparator' })
-      end
-    end
-    if #chunks > 0 then
-      api.nvim_buf_set_extmark(bufnr, ns, i, 0, { virt_text = chunks,
-                                                  hl_mode="combine" })
-    end
-  end
-end
-
-
---- Store lenses for a specific buffer and client
----
----@param lenses table of lenses to store (`CodeLens[] | null`)
----@param bufnr number
----@param client_id number
-function M.save(lenses, bufnr, client_id)
-  local lenses_by_client = lens_cache_by_buf[bufnr]
-  if not lenses_by_client then
-    lenses_by_client = {}
-    lens_cache_by_buf[bufnr] = lenses_by_client
-    local ns = namespaces[client_id]
-    api.nvim_buf_attach(bufnr, false, {
-      on_detach = function(b) lens_cache_by_buf[b] = nil end,
-      on_lines = function(_, b, _, first_lnum, last_lnum)
-        api.nvim_buf_clear_namespace(b, ns, first_lnum, last_lnum)
-      end
+---@private
+---@param client vim.lsp.Client
+function Provider:cancel_requests(client)
+  for _, method in ipairs({ 'textDocument/codeLens', 'codeLens/resolve' }) do
+    util._cancel_requests({
+      bufnr = self.bufnr,
+      clients = { client },
+      method = method,
+      type = 'pending',
     })
   end
-  lenses_by_client[client_id] = lenses
 end
 
+---@package
+---@param client_id integer
+function Provider:clear(client_id)
+  local state = self.client_state[client_id]
+  if state then
+    local client = vim.lsp.get_client_by_id(client_id)
+    if client then
+      self:cancel_requests(client)
+    end
 
----@private
-local function resolve_lenses(lenses, bufnr, client_id, callback)
-  lenses = lenses or {}
-  local num_lens = vim.tbl_count(lenses)
-  if num_lens == 0 then
-    callback()
+    state.version = nil
+    tableclear(state.row_lenses)
+    api.nvim_buf_clear_namespace(self.bufnr, state.namespace, 0, -1)
+  end
+end
+
+--- `lsp.Handler` for `textDocument/codeLens`.
+---
+---@package
+---@param err? lsp.ResponseError
+---@param result? lsp.CodeLens[]
+---@param ctx lsp.HandlerContext
+function Provider:handler(err, result, ctx)
+  local state = self.client_state[ctx.client_id]
+  if not state then
     return
   end
 
-  ---@private
-  local function countdown()
-    num_lens = num_lens - 1
-    if num_lens == 0 then
-      callback()
+  if err then
+    log.error('codelens', err)
+    return
+  end
+
+  if util.buf_versions[self.bufnr] ~= ctx.version then
+    return
+  end
+
+  tableclear(state.row_lenses)
+
+  -- Code lenses should only span a single line.
+  for _, lens in ipairs(result or {}) do
+    local row = lens.range.start.line
+    local row_lenses = state.row_lenses[row] or { lenses = {} }
+    table.insert(row_lenses.lenses, lens)
+    state.row_lenses[row] = row_lenses
+  end
+  state.version = ctx.version
+
+  api.nvim__redraw({ buf = self.bufnr, valid = true, flush = false })
+end
+
+---@package
+---@param client_id integer
+function Provider:request(client_id)
+  ---@type lsp.CodeLensParams
+  local params = { textDocument = util.make_text_document_params(self.bufnr) }
+  local state = self.client_state[client_id]
+  local client = vim.lsp.get_client_by_id(client_id)
+  if state and client then
+    self:cancel_requests(client)
+    client:request('textDocument/codeLens', params, function(...)
+      self:handler(...)
+    end, self.bufnr)
+  end
+end
+
+---@private
+---@param client vim.lsp.Client
+---@param unresolved_lens lsp.CodeLens
+function Provider:resolve(client, unresolved_lens)
+  ---@param resolved_lens lsp.CodeLens
+  client:request('codeLens/resolve', unresolved_lens, function(err, resolved_lens, ctx)
+    local state = self.client_state[client.id]
+    if not state then
+      return
+    end
+
+    if err then
+      log.error('codelens/resolve', err)
+      return
+    end
+
+    if util.buf_versions[self.bufnr] ~= ctx.version then
+      return
+    end
+
+    local row = unresolved_lens.range.start.line
+    local row_lenses = state.row_lenses[row]
+    -- A newer textDocument/codeLens response can replace row_lenses while resolve is in flight.
+    if not row_lenses then
+      return
+    end
+
+    for i, lens in ipairs(row_lenses.lenses) do
+      -- Only apply if this exact unresolved lens still exists; otherwise response is stale.
+      if lens == unresolved_lens then
+        row_lenses.lenses[i] = resolved_lens
+        row_lenses.version = nil
+        api.nvim__redraw({
+          buf = self.bufnr,
+          range = { row, row + 1 },
+          valid = true,
+          flush = false,
+        })
+        return
+      end
+    end
+  end, self.bufnr)
+end
+
+---@package
+---@param toprow integer
+---@param botrow integer
+function Provider:on_win(toprow, botrow)
+  for row = toprow, botrow do
+    for client_id, state in pairs(self.client_state) do
+      if state.version == util.buf_versions[self.bufnr] then
+        local row_lenses = state.row_lenses[row]
+
+        if not row_lenses then
+          api.nvim_buf_clear_namespace(self.bufnr, state.namespace, row, row + 1)
+        elseif row_lenses.version ~= state.version then
+          row_lenses.version = state.version
+
+          local bufnr = self.bufnr
+          local namespace = state.namespace
+
+          table.sort(row_lenses.lenses, function(a, b)
+            return a.range.start.character < b.range.start.character
+          end)
+
+          local client = assert(vim.lsp.get_client_by_id(client_id))
+          local range =
+            vim.range.lsp(bufnr, assert(row_lenses.lenses[1]).range, client.offset_encoding)
+          ---@type [string, string][]
+          local virt_text = {
+            { string.rep(' ', range.start_col), 'LspCodeLensSeparator' },
+          }
+          local has_unresolved = false
+
+          for _, lens in ipairs(row_lenses.lenses) do
+            -- A code lens is unresolved when no command is associated to it.
+            if not lens.command then
+              has_unresolved = true
+              self:resolve(client, lens)
+            else
+              vim.list_extend(virt_text, {
+                { lens.command.title, 'LspCodeLens' },
+                { ' | ', 'LspCodeLensSeparator' },
+              })
+            end
+          end
+
+          local had_extmark = #api.nvim_buf_get_extmarks(
+            bufnr,
+            namespace,
+            { row, 0 },
+            { row, -1 },
+            {}
+          ) > 0
+
+          if not has_unresolved or not had_extmark then
+            -- Remove trailing separator.
+            table.remove(virt_text)
+
+            -- Use a placeholder to prevent flickering caused by layout shifts.
+            if #virt_text == 1 then
+              table.insert(virt_text, { '', 'LspCodeLens' })
+            end
+
+            api.nvim_buf_clear_namespace(bufnr, namespace, row, row + 1)
+            api.nvim_buf_set_extmark(bufnr, namespace, row, 0, {
+              virt_lines = { virt_text },
+              virt_lines_above = true,
+              virt_lines_overflow = 'scroll',
+              hl_mode = 'combine',
+            })
+
+            -- Fix https://github.com/neovim/neovim/issues/16166
+            -- Make sure the code lens on the first line is visible when updating.
+            if row == 0 then
+              vim.fn.winrestview({ topfill = 1 })
+            end
+          end
+        end
+      end
     end
   end
-  local ns = namespaces[client_id]
-  local client = vim.lsp.get_client_by_id(client_id)
-  for _, lens in pairs(lenses or {}) do
-    if lens.command then
-      countdown()
-    else
-      client.request('codeLens/resolve', lens, function(_, result)
-        if result and result.command then
-          lens.command = result.command
-          -- Eager display to have some sort of incremental feedback
-          -- Once all lenses got resolved there will be a full redraw for all lenses
-          -- So that multiple lens per line are properly displayed
-          api.nvim_buf_set_extmark(
-            bufnr,
-            ns,
-            lens.range.start.line,
-            0,
-            { virt_text = {{ lens.command.title, 'LspCodeLens' }},
-                hl_mode="combine" }
-          )
-        end
-        countdown()
-      end, bufnr)
+
+  -- Clear extmarks beyond the bottom of the buffer.
+  if botrow == api.nvim_buf_line_count(self.bufnr) - 1 then
+    for _, state in pairs(self.client_state) do
+      api.nvim_buf_clear_namespace(self.bufnr, state.namespace, botrow + 1, -1)
     end
   end
 end
 
-
---- |lsp-handler| for the method `textDocument/codeLens`
+--- Query whether code lens is enabled in the {filter}ed scope
 ---
-function M.on_codelens(err, result, ctx, _)
-  assert(not err, vim.inspect(err))
+---@param filter? vim.lsp.capability.enable.Filter
+---@return boolean whether code lens is enabled.
+function M.is_enabled(filter)
+  return vim.lsp._capability.is_enabled('codelens', filter)
+end
 
-  M.save(result, ctx.bufnr, ctx.client_id)
+--- Enables or disables code lens for the {filter}ed scope.
+---
+--- To "toggle", pass the inverse of `is_enabled()`:
+---
+--- ```lua
+--- vim.lsp.codelens.enable(not vim.lsp.codelens.is_enabled())
+--- ```
+---
+--- To run a code lens, see |vim.lsp.codelens.run()|.
+---
+---@param enable? boolean true/nil to enable, false to disable
+---@param filter? vim.lsp.capability.enable.Filter
+function M.enable(enable, filter)
+  vim.lsp._capability.enable('codelens', enable, filter)
+end
 
-  -- Eager display for any resolved (and unresolved) lenses and refresh them
-  -- once resolved.
-  M.display(result, ctx.bufnr, ctx.client_id)
-  resolve_lenses(result, ctx.bufnr, ctx.client_id, function()
-    M.display(result, ctx.bufnr, ctx.client_id)
-    active_refreshes[ctx.bufnr] = nil
+--- Optional filters |kwargs|:
+---@class vim.lsp.codelens.get.Filter
+---@inlinedoc
+---
+--- Buffer handle, or 0 for current.
+--- (default: 0)
+---@field bufnr? integer
+---
+--- Client ID, or nil for all.
+--- (default: all)
+---@field client_id? integer
+
+---@class vim.lsp.codelens.get.Result
+---@inlinedoc
+---@field client_id integer
+---@field lens lsp.CodeLens
+
+--- Get all code lenses in the {filter}ed scope.
+---
+---@param filter? vim.lsp.codelens.get.Filter
+---@return vim.lsp.codelens.get.Result[]
+---@overload fun(filter: integer): lsp.CodeLens[]
+function M.get(filter)
+  if type(filter) == 'number' then
+    vim.deprecate(
+      'vim.lsp.codelens.get(bufnr)',
+      'vim.lsp.codelens.get({ bufnr = bufnr })',
+      '0.13.0'
+    )
+    local bufnr = vim._resolve_bufnr(filter --[[@as integer]])
+    local provider = Provider.active[bufnr]
+    if not provider then
+      return {}
+    end
+    ---@type lsp.CodeLens[]
+    local result = {}
+    for _, state in pairs(provider.client_state) do
+      for _, row_lenses in pairs(state.row_lenses) do
+        result = vim.list_extend(result, row_lenses.lenses)
+      end
+    end
+    ---@diagnostic disable-next-line: return-type-mismatch
+    return result
+  end
+
+  vim.validate('filter', filter, 'table', true)
+  filter = filter or {}
+
+  local bufnr = vim._resolve_bufnr(filter.bufnr)
+  local provider = Provider.active[bufnr]
+  if not provider then
+    return {}
+  end
+
+  local result = {}
+  for client_id, state in pairs(provider.client_state) do
+    if not filter.client_id or filter.client_id == client_id then
+      for _, row_lenses in pairs(state.row_lenses) do
+        for _, lens in ipairs(row_lenses.lenses) do
+          table.insert(result, { client_id = client_id, lens = lens })
+        end
+      end
+    end
+  end
+  return result
+end
+
+---@param lnum integer
+---@param opts vim.lsp.codelens.run.Opts
+---@param results table<integer, {err: lsp.ResponseError?, result: lsp.CodeLens[]?}>
+---@param context lsp.HandlerContext
+local function on_lenses_run(lnum, opts, results, context)
+  local bufnr = context.bufnr or 0
+
+  ---@type {client: vim.lsp.Client, command: lsp.Command}[]
+  local candidates = {}
+  local pending_resolve = 1
+  local function on_resolved()
+    pending_resolve = pending_resolve - 1
+    if pending_resolve > 0 then
+      return
+    end
+    if #candidates == 0 then
+      vim.notify('No codelens at current line')
+    elseif #candidates == 1 then
+      local candidate = candidates[1]
+      candidate.client:exec_cmd(candidate.command, { bufnr = bufnr })
+    else
+      local selectopts = {
+        prompt = 'Code lenses: ',
+        kind = 'codelens',
+        ---@param candidate {client: vim.lsp.Client, command: lsp.Command}
+        format_item = function(candidate)
+          return string.format('%s [%s]', candidate.command.title, candidate.client.name)
+        end,
+      }
+      vim.ui.select(candidates, selectopts, function(candidate)
+        if candidate then
+          candidate.client:exec_cmd(candidate.command, { bufnr = bufnr })
+        end
+      end)
+    end
+  end
+  for client_id, result in pairs(results) do
+    if opts.client_id == nil or opts.client_id == client_id then
+      local client = assert(vim.lsp.get_client_by_id(client_id))
+      for _, lens in ipairs(result.result or {}) do
+        if lens.range.start.line == lnum then
+          if lens.command then
+            table.insert(candidates, { client = client, command = lens.command })
+          else
+            pending_resolve = pending_resolve + 1
+            client:request('codeLens/resolve', lens, function(_, resolved_lens)
+              if resolved_lens and resolved_lens.command then
+                table.insert(candidates, { client = client, command = resolved_lens.command })
+              end
+              on_resolved()
+            end, bufnr)
+          end
+        end
+      end
+    end
+  end
+  on_resolved()
+end
+
+--- Optional parameters |kwargs|:
+---@class vim.lsp.codelens.run.Opts
+---@inlinedoc
+---
+--- Client ID, or nil for all.
+--- (default: all)
+---@field client_id? integer
+
+--- Run code lens at the current cursor position.
+---
+---@param opts? vim.lsp.codelens.run.Opts
+function M.run(opts)
+  vim.validate('opts', opts, 'table', true)
+  opts = opts or {}
+
+  local winid = api.nvim_get_current_win()
+  local bufnr = api.nvim_win_get_buf(winid)
+  local pos = vim.pos.cursor(winid)
+  local params = {
+    textDocument = vim.lsp.util.make_text_document_params(bufnr),
+  }
+  vim.lsp.buf_request_all(bufnr, 'textDocument/codeLens', params, function(results, context)
+    on_lenses_run(pos.row, opts, results, context)
   end)
 end
 
-
---- Refresh the codelens for the current buffer
+--- |lsp-handler| for the method `workspace/codeLens/refresh`
 ---
---- It is recommended to trigger this using an autocmd or via keymap.
----
---- <pre>
----   autocmd BufEnter,CursorHold,InsertLeave <buffer> lua vim.lsp.codelens.refresh()
---- </pre>
----
-function M.refresh()
-  local params = {
-    textDocument = util.make_text_document_params()
-  }
-  local bufnr = api.nvim_get_current_buf()
-  if active_refreshes[bufnr] then
-    return
+---@internal
+---@diagnostic disable-next-line: annotation-usage-error
+---@type lsp.Handler
+function M.on_refresh(err, _, ctx)
+  if err then
+    return vim.NIL
   end
-  active_refreshes[bufnr] = true
-  vim.lsp.buf_request(0, 'textDocument/codeLens', params)
+
+  for _, provider in pairs(Provider.active) do
+    local state = provider.client_state[ctx.client_id]
+    if state then
+      provider:request(ctx.client_id)
+    end
+  end
+
+  return vim.NIL
 end
 
+---@deprecated
+---@param client_id? integer
+---@param bufnr? integer
+function M.clear(client_id, bufnr)
+  vim.deprecate(
+    'vim.lsp.codelens.clear(client_id, bufnr)',
+    'vim.lsp.codelens.enable(false, { bufnr = bufnr, client_id = client_id })',
+    '0.13.0'
+  )
+  M.enable(false, { bufnr = bufnr, client_id = client_id })
+end
+
+---@deprecated
+---@param lenses? lsp.CodeLens[] lenses to display
+---@param bufnr integer
+---@param client_id integer
+function M.display(lenses, bufnr, client_id)
+  vim.deprecate('vim.lsp.codelens.display()', nil, '0.13.0')
+  local _, _, _ = lenses, bufnr, client_id
+end
+
+---@deprecated
+---@param lenses? lsp.CodeLens[] lenses to store
+---@param bufnr integer
+---@param client_id integer
+function M.save(lenses, bufnr, client_id)
+  vim.deprecate('vim.lsp.codelens.save()', nil, '0.13.0')
+  local _, _, _ = lenses, bufnr, client_id
+end
+
+---@deprecated
+---@param err? lsp.ResponseError
+---@param result lsp.CodeLens[]
+---@param ctx lsp.HandlerContext
+function M.on_codelens(err, result, ctx)
+  vim.deprecate('vim.lsp.codelens.on_codelens()', nil, '0.13.0')
+  local _, _, _ = err, result, ctx
+end
+
+---@class vim.lsp.codelens.refresh.Opts
+---@inlinedoc
+---@field bufnr? integer
+
+---@deprecated
+---@param opts? vim.lsp.codelens.refresh.Opts Optional fields
+function M.refresh(opts)
+  vim.deprecate(
+    'vim.lsp.codelens.refresh({ bufnr = bufnr})',
+    'vim.lsp.codelens.enable(true, { bufnr = bufnr })',
+    '0.13.0'
+  )
+
+  vim.validate('opts', opts, 'table', true)
+  M.enable(true, { bufnr = opts and opts.bufnr })
+end
 
 return M

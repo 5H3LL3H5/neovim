@@ -130,7 +130,7 @@ double fpconv_strtod(const char *nptr, char **endptr)
     /* Duplicate number into buffer */
     if (buflen >= FPCONV_G_FMT_BUFSIZE) {
         /* Handle unusually large numbers */
-        buf = malloc(buflen + 1);
+        buf = (char *)malloc(buflen + 1);
         if (!buf) {
             fprintf(stderr, "Out of memory");
             abort();
@@ -202,7 +202,7 @@ int fpconv_g_fmt(char *str, double num, int precision)
     return len;
 }
 
-void fpconv_init()
+void fpconv_init(void)
 {
     fpconv_update_locale();
 }

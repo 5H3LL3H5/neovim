@@ -1,7 +1,9 @@
 " Vim filetype plugin file
 " Language:	Aap recipe
-" Maintainer:	Bram Moolenaar <Bram@vim.org>
-" Last Change:	2021 Nov 14
+" Maintainer:	The Vim Project <https://github.com/vim/vim>
+" Last Change:	2024 Jan 14
+"		2026 Jun 27 by Vim Project (add recommended style guard)
+" Former Maintainer:	Bram Moolenaar <Bram@vim.org>
 
 " Only do this when not done yet for this buffer
 if exists("b:did_ftplugin")
@@ -24,9 +26,17 @@ setlocal comments=s:#\ -,m:#\ \ ,e:#,n:#,fb:-
 setlocal commentstring=#\ %s
 
 " Expand tabs to spaces to avoid trouble.
-setlocal expandtab
+if get(g:, 'aap_recommended_style',
+      \ get(g:, 'filetype_recommended_style', 1))
+  setlocal expandtab
+endif
 
 if (has("gui_win32") || has("gui_gtk")) && !exists("b:browsefilter")
-  let b:browsefilter = "Aap Recipe Files (*.aap)\t*.aap\nAll Files (*.*)\t*.*\n"
+  let b:browsefilter = "Aap Recipe Files (*.aap)\t*.aap\n"
+  if has("win32")
+    let b:browsefilter ..= "All Files (*.*)\t*\n"
+  else
+    let b:browsefilter ..= "All Files (*)\t*\n"
+  endif
   let b:undo_ftplugin ..= " | unlet! b:browsefilter"
 endif
